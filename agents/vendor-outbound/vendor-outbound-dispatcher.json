@@ -1,0 +1,613 @@
+{
+  "name": "Vendor Outbound Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -16,
+        0
+      ],
+      "id": "a0fb7579-ce33-48aa-a254-d38cb372169b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    vendor_email, \n    MAX(vendor_name) AS vendor_name,\n    MAX(vendor_phone) AS vendor_phone,\n    customer_name,\n    customer_email,\n    customer_phone,\n    city,\n    STRING_AGG(DISTINCT equipment_requested, ',') AS equipment_list,\n    STRING_AGG(dispatch_id::text, ',') AS all_dispatch_ids,\n    MAX(start_date) AS start_date,\n    MAX(end_date) AS end_date,\n    MAX(vendor_priority) AS vendor_priority\nFROM partners_dispatch\nWHERE \n    dispatch_status = 'pending_vendor_contact'\n    AND search_status = 'lead_captured'\n    AND call_attempts < 2\n    AND (call_result IS NULL OR call_result != 'Completed')\n    AND customer_name IS NOT NULL\n    AND customer_name != ''\n    AND customer_phone IS NOT NULL\n    AND customer_phone != ''\nGROUP BY \n    vendor_email,\n    customer_name,\n    customer_email,\n    customer_phone,\n    city\nORDER BY MAX(vendor_priority) ASC, MAX(created_at) ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "19a38a64-2e6b-4800-8fcc-5dacc875de2d",
+      "name": "Execute a SQL query",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-callback-vendor",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -80,
+        416
+      ],
+      "id": "54f1ac70-8da2-4000-b921-d91c9732c8c7",
+      "name": "Webhook",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab821d80-e1ad-4fc3-b7b8-459197306338",
+              "name": "markup_amount",
+              "value": "={{ $json.vendor_rate * 0.20 }}",
+              "type": "number"
+            },
+            {
+              "id": "b7d42a36-637a-4558-b065-b6f60df23e64",
+              "name": "client_final_rate",
+              "value": "={{ $json.vendor_rate + ($json.vendor_rate * 0.20) }}",
+              "type": "number"
+            },
+            {
+              "id": "1865aea2-09c3-4c5c-82f7-915b04645417",
+              "name": "dispatch_id",
+              "value": "={{ $json.dispatch_id }}",
+              "type": "string"
+            },
+            {
+              "id": "d076703a-f9b7-4df6-b638-051a460484e5",
+              "name": "equipment",
+              "value": "={{ $json.equipment }}",
+              "type": "string"
+            },
+            {
+              "id": "cad28332-ed9b-4aa3-aca0-27d617f4fcf7",
+              "name": "vendor_rate",
+              "value": "={{ $json.vendor_rate }}",
+              "type": "number"
+            },
+            {
+              "id": "a01c708d-db68-4869-b7bc-91279a1ef097",
+              "name": "dispatch_status",
+              "value": "={{ $json.dispatch_status }}",
+              "type": "string"
+            },
+            {
+              "id": "858e8c2f-6ac3-44f4-bc79-632c1c747dc8",
+              "name": "customer_name",
+              "value": "={{ $json.customer_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        864,
+        400
+      ],
+      "id": "509fce6e-2022-4600-b7bc-0d1401fa36b1",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE partners_dispatch \nSET \n  vendor_base_rate = {{ $json.vendor_rate }},\n  markup_amount = {{ $json.markup_amount }},\n  client_final_rate = {{ $json.client_final_rate }},\n  dispatch_status = 'Available',\n  updated_at = NOW()\nWHERE dispatch_id = '{{ $json.dispatch_id }}'::uuid\nRETURNING dispatch_id, dispatch_status, customer_phone, equipment_requested;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1072,
+        400
+      ],
+      "id": "aecd3063-9303-4e45-9883-a935c901c49e",
+      "name": "Execute a SQL query1",
+      "executeOnce": false,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=🚨 *NEW DISPATCH CONFIRMED* 🚨\n\n👤 *CUSTOMER PROFILE*\n• *Name:* {{ $('Code in JavaScript1').item.json.customer_name }}\n• *Email:* {{ $('Code in JavaScript1').item.json.customer_email }}\n• *Phone:* {{ $('Code in JavaScript1').item.json.customer_phone }}\n• *Location:* {{ $('Code in JavaScript1').item.json.city }}\n\n📅 *BOOKING SCHEDULE*\n• *Start Date:* {{ new Date($('Code in JavaScript1').item.json.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }}\n• *End Date:* {{ new Date($('Code in JavaScript1').item.json.end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }}\n\n🏢 *VENDOR DETAILS*\n• *Company:* {{ $('Code in JavaScript1').item.json.vendor_name }}\n• *Contact:* {{ $('Code in JavaScript1').item.json.vendor_phone }}\n• *Email:* {{ $('Code in JavaScript1').item.json.vendor_email }}\n\n🏗️ *EQUIPMENT BREAKDOWN* \n{{ $json.formatted_equipment_list }}\n\n✅ *STATUS:* {{ $('Code in JavaScript1').item.json.status.toUpperCase() }}\n🔗 *DISPATCH IDs:* `{{ $('Code in JavaScript1').item.json.all_dispatch_ids }}`",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2000,
+        400
+      ],
+      "id": "9ed964a7-8f5f-4a1a-aa72-340f5c7f263a",
+      "name": "Send a message",
+      "webhookId": "YOUR_SLACK_WEBHOOK_ID",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7939c638-e8c8-4d7e-b09b-04fc64535270",
+              "leftValue": "={{ $json.dispatch_status }}",
+              "rightValue": "Available",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        368,
+        416
+      ],
+      "id": "88f8d7ba-f5f4-4661-a654-7b3e4d42b89b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE partners_dispatch\nSET\n  call_result = 'no_answer',\n  last_call_at = NOW(),\n  updated_at = NOW()\nWHERE dispatch_id = ANY(\n  string_to_array('{{ $('Webhook').item.json.body.all_dispatch_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1456,
+        672
+      ],
+      "id": "5456ba54-28f4-4223-9e42-00bf3b73307f",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE partners_dispatch \nSET \n    call_attempts = call_attempts + 1,\n    call_result = 'calling',\n    last_call_at = NOW()\nWHERE dispatch_id = ANY(\n    string_to_array('{{ $json.all_dispatch_ids }}', ',')::uuid[]\n);",
+        "options": {
+          "queryReplacement": "={{ $json.all_dispatch_ids }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        688,
+        16
+      ],
+      "id": "cc5b9ec4-389a-4743-94b3-406fb92e2ae0",
+      "name": "Execute a SQL query3",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        400,
+        0
+      ],
+      "id": "c286e2c8-ef66-4858-9007-945e6ff95d0a",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phoneNumberId\": \"YOUR_VAPI_PHONE_NUMBER_ID\",\n  \"assistantId\": \"YOUR_VAPI_ASSISTANT_ID\",\n  \"assistantOverrides\": {\n    \"variableValues\": {\n      \"all_dispatch_ids\": \"{{ $('Loop Over Items').item.json.all_dispatch_ids }}\",\n      \"vendor_name\": \"{{ $('Loop Over Items').item.json.vendor_name }}\",\n      \"vendor_phone\": \"{{ $('Loop Over Items').item.json.vendor_phone }}\",\n      \"vendor_email\": \"{{ $('Loop Over Items').item.json.vendor_email }}\",\n      \"customer_name\": \"{{ $('Loop Over Items').item.json.customer_name }}\",\n      \"customer_email\": \"{{ $('Loop Over Items').item.json.customer_email }}\",\n      \"customer_phone\": \"{{ $('Loop Over Items').item.json.customer_phone }}\",\n      \"equipment_list\": \"{{ $('Loop Over Items').item.json.equipment_list }}\",\n      \"city\": \"{{ $('Loop Over Items').item.json.city }}\",\n      \"start_date\": \"{{ $('Loop Over Items').item.json.start_date }}\",\n      \"end_date\": \"{{ $('Loop Over Items').item.json.end_date }}\",\n      \"start_date_spoken\": \"{{ new Date($('Loop Over Items').item.json.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }}\",\n      \"end_date_spoken\": \"{{ new Date($('Loop Over Items').item.json.end_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }}\",\n      \"vendor_priority\": \"{{ $('Loop Over Items').item.json.vendor_priority }}\"\n    }\n  },\n  \"customer\": {\n    \"number\": \"{{ $('Loop Over Items').item.json.vendor_phone }}\",\n    \"name\": \"{{ $('Loop Over Items').item.json.vendor_name }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        16
+      ],
+      "id": "b262a7f7-184e-4f3f-b21c-aaf8f06dde1f",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_VAPI_API_CREDENTIAL_ID",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body;\n\nconst ids = body.all_dispatch_ids.split(',');\nconst equipments = body.equipment_list.split(',');\nconst rates = body.vendor_base_rate.split(',');\n\nreturn ids.map((id, i) => ({\n  json: {\n    dispatch_id: id.trim(),\n    equipment: equipments[i] ? equipments[i].trim() : '',\n    vendor_rate: parseFloat(rates[i]) || 0,\n    dispatch_status: body.dispatch_status,\n    customer_name: body.customer_name,\n    customer_email: body.customer_email,\n    customer_phone: body.customer_phone,\n    vendor_name: body.vendor_name,\n    vendor_phone: body.vendor_phone,\n    vendor_email: body.vendor_email,\n    city: body.city,\n    start_date: body.start_date,\n    end_date: body.end_date,\n    all_dispatch_ids: body.all_dispatch_ids,\n    vendor_priority: body.vendor_priority\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        416
+      ],
+      "id": "8284948a-636a-4dd8-a371-cf71c2f31545",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Equipment ki list pichle node se le rahe hain\nconst allItems = $('Edit Fields').all();\n\n// 2. Customer aur Vendor ki info seedha Webhook se le rahe hain\n// (Note: Agar field names Webhook mein thore alag hain toh wo check kar lein)\nconst webhook = $('Webhook').item.json.body;\n\nreturn [{\n  json: {\n    // Customer Details (Webhook se)\n    customer_name: webhook.customer_name || allItems[0].json.customer_name,\n    customer_email: webhook.customer_email || 'N/A',\n    customer_phone: webhook.customer_phone || 'N/A',\n    city: webhook.city || 'N/A', // Aap ne kaha city simple hai\n    \n    // Vendor Details (Webhook se)\n    vendor_name: webhook.vendor_name || 'N/A',\n    vendor_phone: webhook.vendor_phone || 'N/A',\n    vendor_email: webhook.vendor_email || 'N/A',\n    \n    // Dates (Webhook se)\n    start_date: webhook.start_date,\n    end_date: webhook.end_date,\n    \n    // Aggregated List (Jo humne pehle banayi thi)\n    all_dispatch_ids: allItems.map(i => i.json.dispatch_id).join(\", \"),\n    equipment_list: allItems.map(i => i.json),\n    status: allItems[0].json.dispatch_status || \"Available\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        400
+      ],
+      "id": "af83427b-084b-41ca-a089-38bddc839406",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c6a4a278-dbc2-498b-9abe-a850390f6998",
+              "name": "formatted_equipment_list",
+              "value": "={{ $json.equipment_list.map(e => `• *${e.equipment.toUpperCase()}*\\n  - Vendor Rate: $${e.vendor_rate}\\n  - Markup: $${e.markup_amount}\\n  - Final Rate: *$${e.client_final_rate}*`).join('\\n\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1792,
+        400
+      ],
+      "id": "510996cf-ec3d-447e-9bf1-2c6ddd1be2a3",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "dispatch_id"
+            },
+            {
+              "fieldToAggregate": "equipment"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        608,
+        576
+      ],
+      "id": "76f367c9-62b5-4dc7-86e7-94d17e3e0f0c",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE partners_dispatch\nSET \n  dispatch_status = 'Cancelled',\n  updated_at = NOW()\nWHERE \n  customer_phone = '{{ $('Webhook').item.json.body.customer_phone }}'\n  AND equipment_requested = '{{ $json.equipment_requested }}'\n  AND CAST(vendor_priority AS INTEGER) > CAST('{{ $('Webhook').item.json.body.vendor_priority }}' AS INTEGER)\n  AND dispatch_status NOT IN ('Available', 'Cancelled')\nRETURNING dispatch_id, dispatch_status, equipment_requested;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1280,
+        400
+      ],
+      "id": "fbcc027f-6bb3-4dfe-983e-1425a5279003",
+      "name": "Execute a SQL query4",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4a2b9938-863f-4db4-a97a-9bb325f73afd",
+              "leftValue": "={{ $('Webhook').item.json.body.dispatch_status }}",
+              "rightValue": "no_answer",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        976,
+        688
+      ],
+      "id": "14375eda-edf8-4ba9-898f-50a13f88cb22",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE partners_dispatch\nSET\n  dispatch_status = 'Unavailable',\n  call_result = 'unavailable',\n  updated_at = NOW()\nWHERE dispatch_id = ANY(\n  string_to_array('{{ $('Webhook').item.json.body.all_dispatch_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1184,
+        784
+      ],
+      "id": "81d815eb-81bd-47aa-85ee-5ad11b78eff9",
+      "name": "Execute a SQL query5",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        []
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Execute a SQL query3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b2c6d33f-769a-455d-a002-0e4b0b26ac46",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "nea98VvUMpDRnmv3",
+  "tags": []
+}

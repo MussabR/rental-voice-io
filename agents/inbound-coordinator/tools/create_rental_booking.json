@@ -1,0 +1,51 @@
+{
+  "id": "YOUR_TOOL_ID",
+  "createdAt": "2026-03-16T05:50:57.958Z",
+  "updatedAt": "2026-03-30T15:11:06.101Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool"
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "YOUR_ORG_ID",
+  "name": "create_rental_booking",
+  "url": "https://YOUR_N8N_DOMAIN/webhook/vapi-booking",
+  "method": "POST",
+  "body": {
+    "type": "object",
+    "required": [
+      "city", "email", "address", "full_name", "daily_rate", 
+      "model_name", "start_time", "postal_code", "total_price", 
+      "company_name", "equipment_id", "phone_number", "state_region", 
+      "expected_return_time"
+    ],
+    "properties": {
+      "city": { "description": "", "type": "string", "default": "" },
+      "email": { "description": "", "type": "string", "default": "" },
+      "address": { "description": "", "type": "string", "default": "" },
+      "full_name": { "description": "", "type": "string", "default": "" },
+      "daily_rate": { "description": "", "type": "string", "default": "" },
+      "model_name": { "description": "", "type": "string", "default": "" },
+      "start_time": { "description": "", "type": "string", "default": "" },
+      "postal_code": { "description": "", "type": "string", "default": "" },
+      "total_price": { "description": "", "type": "number", "default": "" },
+      "company_name": { "description": "", "type": "string", "default": "" },
+      "equipment_id": { "description": "", "type": "string", "default": "" },
+      "phone_number": { "description": "", "type": "string", "default": "" },
+      "state_region": { "description": "", "type": "string", "default": "" },
+      "expected_return_time": { "description": "", "type": "string", "default": "" }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  }
+}

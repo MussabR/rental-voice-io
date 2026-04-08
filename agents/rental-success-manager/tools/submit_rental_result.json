@@ -1,0 +1,49 @@
+{
+  "id": "YOUR_TOOL_ID",
+  "createdAt": "2026-03-26T07:35:56.434Z",
+  "updatedAt": "2026-03-30T15:13:33.524Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool",
+    "description": "This tool must be called at the very end of the conversation once a final decision (confirm, extend, or no-answer) is reached. It sends the rental data and client's response back to the n8n system. You MUST include all 12 parameters in the request"
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "YOUR_ORG_ID",
+  "name": "submit_rental_result",
+  "url": "https://YOUR_N8N_DOMAIN/webhook/rental-manager",
+  "method": "POST",
+  "body": {
+    "type": "object",
+    "required": [
+      "rental_ids", "equipment_ids", "client_name", "company_name", 
+      "client_phone", "items_list", "call_type", "daily_rates", 
+      "late_fees", "return_times", "response", "new_return_time"
+    ],
+    "properties": {
+      "response": { "description": "The client's decision. Must be 'confirm', 'extend', or 'action_required'.", "type": "string", "default": "" },
+      "call_type": { "description": "Either 'OWNED' or 'PARTNER'.", "type": "string", "default": "" },
+      "late_fees": { "description": "The penalty fee per hour/day.", "type": "string", "default": "" },
+      "items_list": { "description": "The names of the machines (e.g., Mini Excavator).", "type": "string", "default": "" },
+      "rental_ids": { "description": "The unique ID of the rental (from metadata).", "type": "string", "default": "" },
+      "client_name": { "description": "The name of the person being called.", "type": "string", "default": "" },
+      "daily_rates": { "description": "The rental cost per day for extension.", "type": "string", "default": "" },
+      "client_phone": { "description": "The phone number of the client.", "type": "string", "default": "" },
+      "company_name": { "description": "Name of the client's company.", "type": "string", "default": "" },
+      "return_times": { "description": "The original scheduled return date/time.", "type": "string", "default": "" },
+      "equipment_ids": { "description": "The ID of the specific machines (from metadata).", "type": "string", "default": "" },
+      "new_return_time": { "description": "If they extended, provide the new date. Otherwise leave null/empty.", "type": "string", "default": "" }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  }
+}

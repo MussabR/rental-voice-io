@@ -1,0 +1,572 @@
+{
+  "name": "Inbound Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-896, 64],
+      "id": "25224a9b-45de-4393-8d7f-0be17fdda419",
+      "name": "Webhook",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT equipment_id, model_name, daily_rate, status \nFROM equipment_inventory \nWHERE \n  (\n    LOWER(model_name) LIKE LOWER('%' || '{{ $json.body.equipment_requested }}' || '%')\n    OR LOWER('{{ $json.body.equipment_requested }}') LIKE LOWER('%' || model_name || '%')\n  )\n  AND status = 'available' \nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-608, 160],
+      "id": "856db338-c412-4709-8e1b-52ece902ae76",
+      "name": "Execute a SQL query",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"result\": \"Yes, we have a {{ $json.model_name }} available at ${{ $json.daily_rate }} per day. Shall we proceed?\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [0, 192],
+      "id": "bd71c852-6550-4d73-afb3-7efc1e353a6c",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2073adb4-e4d0-4766-9ea1-d0001e9ce856",
+              "leftValue": "={{ $json.model_name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-336, 64],
+      "id": "1b148877-c5d8-4481-aa34-c1048387fc8b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"result\": \"I'm sorry, we don't have that machine available right now.\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1360, 112],
+      "id": "f3182678-867b-47ef-bd4a-6c3ff16cb93e",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1088, 464],
+      "id": "338c0afd-ca48-4936-a3b4-6350fe9baf08",
+      "name": "Webhook1",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO clients (full_name, phone_number, company_name, email, address, city, state_region, postal_code)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8)\nON CONFLICT (phone_number)\nDO UPDATE SET\n    full_name = EXCLUDED.full_name,\n    company_name = EXCLUDED.company_name,\n    email = EXCLUDED.email,\n    address = EXCLUDED.address,\n    city = EXCLUDED.city,\n    state_region = EXCLUDED.state_region,\n    postal_code = EXCLUDED.postal_code\nRETURNING client_id;",
+        "options": {
+          "queryReplacement": "={{ $json.full_name || \"\" }}\n{{ $json.phone_number || \"\" }}\n{{ $json.company_name || \"\" }}\n{{ $json.email || \"\" }}\n{{ $json.address || \"\" }}\n{{ $json.city || \"\" }}\n{{ $json.state_region || \"\" }}\n{{ $json.postal_code || \"\" }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-336, 528],
+      "id": "02d064f8-2577-470d-93d4-e63d764c8162",
+      "name": "Execute a SQL query1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO rentals (client_id, equipment_id, total_price, start_time, expected_return_time)\nVALUES ($1, $2, $3, $4, $5);",
+        "options": {
+          "queryReplacement": "={{ $node[\"Execute a SQL query1\"].json.client_id }}\n{{ $json.equipment_id }}\n{{ $('Code in JavaScript').item.json.total_price }}\n{{ $('Code in JavaScript').item.json.start_time }}\n{{ $('Code in JavaScript').item.json.expected_return_time }}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [272, 432],
+      "id": "100115eb-74d0-4cdb-ad3a-a4c5f1d3e6c3",
+      "name": "Execute a SQL query2",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE equipment_inventory \nSET status = 'rented' \nWHERE equipment_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Execute a SQL query4').item.json.equipment_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [544, 608],
+      "id": "4c7264c1-6b16-4391-891d-90309ae9f2e2",
+      "name": "Execute a SQL query3",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"result\": \"Booking successful\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1488, 528],
+      "id": "55a635ef-6f7f-43bd-9f99-0155fc9e4946",
+      "name": "Respond to Webhook2",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT equipment_id FROM equipment_inventory\nWHERE model_name = $1 AND status = 'available'\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $('Code in JavaScript').item.json.model_name }}\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-160, 528],
+      "id": "52cbb1bb-c6ce-42f2-9a28-dbe470b36f9e",
+      "name": "Execute a SQL query4",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "da42e8f1-fa2d-40a9-8362-99a2016d8b17",
+              "leftValue": "={{ $node[\"Execute a SQL query4\"].json.equipment_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [0, 528],
+      "id": "fc5aa13d-be98-4b92-9eed-14424eb106e3",
+      "name": "If1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"result\": \"I am sorry, but that specific unit was just booked. Please check if another model is available or inform the customer.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [272, 656],
+      "id": "abd6f2a7-6fa4-4c4e-bf02-a67bd967c88c",
+      "name": "Respond to Webhook3"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "email": "={{ $('Code in JavaScript').item.json.email.replace(/\\s/g, \"\").split(' ')[0].toLowerCase() }}",
+        "additionalFields": {
+          "city": "={{ $('Code in JavaScript').item.json.city }}",
+          "companyName": "={{ $('Code in JavaScript').item.json.company_name }}\n",
+          "firstName": "={{ $('Code in JavaScript').item.json.full_name }}",
+          "phoneNumber": "={{ $('Code in JavaScript').item.json.phone_number }}\n",
+          "postalCode": "={{ $('Code in JavaScript').item.json.postal_code }}",
+          "stateRegion": "={{ $('Code in JavaScript').item.json.state_region }}",
+          "streetAddress": "={{ $('Code in JavaScript').item.json.address }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [720, 608],
+      "id": "7c194b3a-3782-4f42-9dd4-463864e132a3",
+      "name": "Create or update a contact",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YOUR_HUBSPOT_APP_TOKEN",
+          "name": "HubSpot account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "deal",
+        "stage": "qualifiedtobuy",
+        "additionalFields": {
+          "amount": "={{ Number($('Code in JavaScript').item.json.total_price) }}",
+          "associatedVids": "={{ $node[\"Create or update a contact\"].json[\"vid\"] }}",
+          "closeDate": "={{ new Date($('Code in JavaScript').item.json.expected_return_time).getTime() }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "rental_start_date",
+                "value": "={{ new Date($('Code in JavaScript').item.json.start_time).getTime() }}"
+              }
+            ]
+          },
+          "dealName": "={{ $('Code in JavaScript').item.json.model_name }} - {{ $('Code in JavaScript').item.json.full_name }}",
+          "pipeline": "default"
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [864, 608],
+      "id": "e355c956-6044-4d70-b45d-c63f1d16906b",
+      "name": "Create a deal",
+      "alwaysOutputData": false,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "YOUR_HUBSPOT_APP_TOKEN",
+          "name": "HubSpot account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=🚨 NEW INQUIRY:Construction Equipment Rental \n────────────────────────────────── \nCUSTOMER DETAILS \n• Name:{{ $('Webhook').item.json.body.full_name }}  \n• Email:{{ $('Webhook').item.json.body.email }}  \n• Phone:{{ $('Webhook').item.json.body.phone_number }}  \n• Company:{{ $('Webhook').item.json.body.company_name }}  \nEQUIPMENT REQUESTED: {{ $('Webhook').item.json.body.equipment_requested }}\n• Item:  \n• Status: OUT OF STOCK (Notified) \n\n\"The customer has verified these details. Equipment is currently rented out. Lead captured for follow-up.\" ────────────────────────────────── Timestamp: {{ new Date().toISOString() }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [0, 0],
+      "id": "00ad1fbe-ff54-4950-96ec-6846f6c2d6b2",
+      "name": "Send a message",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=✅ BOOKING CONFIRMED & CRM UPDATED\n──────────────────────────────────\nEQUIPMENT RESERVED\n- Model: {{ $('Code in JavaScript').item.json.model_name }}\n- Daily Rate: ${{ $('Code in JavaScript').item.json.daily_rate }}\n- Total Price: ${{ $('Code in JavaScript').item.json.total_price }}\n\nCUSTOMER CONTACT\n- Name: {{ $('Code in JavaScript').item.json.full_name }}\n- Email: {{ $('Code in JavaScript').item.json.email }}\n- Company: {{ $('Code in JavaScript').item.json.company_name }}\n- Phone: {{ $('Code in JavaScript').item.json.phone_number }}\n\nDELIVERY DETAILS\n- Address: {{ $('Code in JavaScript').item.json.address }}\n- Zip Code: {{ $('Code in JavaScript').item.json.postal_code }}\n- City: {{ $('Code in JavaScript').item.json.city }}\n- State: {{ $('Code in JavaScript').item.json.state_region }}\n\nRENTAL DATES\n- Start: {{ new Date($('Code in JavaScript').item.json.start_time).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }} at {{ new Date($('Code in JavaScript').item.json.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }}\n- Return: {{ new Date($('Code in JavaScript').item.json.expected_return_time).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }} at {{ new Date($('Code in JavaScript').item.json.expected_return_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }}\n──────────────────────────────────\nStatus: Booking Confirmed in CRM",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [1120, 608],
+      "id": "cf1b5e21-5fdc-4ef0-af18-1ef344ccc510",
+      "name": "Send a message1",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/companies/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        {\n          \"propertyName\": \"industry\",\n          \"operator\": \"EQ\",\n          \"value\": \"CONSTRUCTION\"\n        },\n        {\n          \"propertyName\": \"city\",\n          \"operator\": \"CONTAINS_TOKEN\",\n          \"value\": \"{{ $('Webhook').item.json.body.city }}\"\n        }\n      ]\n    }\n  ],\n  \"properties\": [\n    \"name\", \n    \"email\", \n    \"phone\", \n    \"city\", \n    \"industry\"\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [304, 112],
+      "id": "43c6cd97-d537-4910-86aa-5e518bc73caf",
+      "name": "HTTP Request",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_VAPI_API_KEY",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "partners_dispatch",
+          "mode": "list",
+          "cachedResultName": "partners_dispatch"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "customer_name": "={{ $('Webhook').item.json.body.full_name }}",
+            "customer_email": "={{ $('Webhook').item.json.body.email }}",
+            "customer_phone": "={{ $('Webhook').item.json.body.phone_number }}",
+            "equipment_requested": "={{ $('Webhook').item.json.body.equipment_requested }}",
+            "city": "={{ $('Webhook').item.json.body.city }}",
+            "crm_vendor_id": "={{ $json.id }}",
+            "vendor_name": "={{ $json.properties.name }}",
+            "vendor_phone": "={{ $json.properties.phone }}",
+            "dispatch_status": "pending_vendor_contact",
+            "created_at": "={{ $now }}",
+            "search_status": "lead_captured",
+            "vendor_email": "={{ $json.properties.email }}",
+            "start_date": "={{ $('Webhook').item.json.body.start_time }}",
+            "end_date": "={{ $('Webhook').item.json.body.expected_return_time }}",
+            "vendor_priority": "={{ $itemIndex + 1 }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "dispatch_id", "displayName": "dispatch_id", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": true },
+            { "id": "rental_id", "displayName": "rental_id", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": true },
+            { "id": "client_id", "displayName": "client_id", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": true },
+            { "id": "crm_vendor_id", "displayName": "crm_vendor_id", "required": true, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "vendor_name", "displayName": "vendor_name", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "vendor_phone", "displayName": "vendor_phone", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "dispatch_status", "displayName": "dispatch_status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "created_at", "displayName": "created_at", "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true },
+            { "id": "customer_name", "displayName": "customer_name", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "customer_email", "displayName": "customer_email", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "customer_phone", "displayName": "customer_phone", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "equipment_requested", "displayName": "equipment_requested", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "search_status", "displayName": "search_status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "city", "displayName": "city", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "vendor_email", "displayName": "vendor_email", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "start_date", "displayName": "start_date", "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true, "removed": false },
+            { "id": "end_date", "displayName": "end_date", "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true, "removed": false },
+            { "id": "vendor_priority", "displayName": "vendor_priority", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": true, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [944, 112],
+      "id": "e0cf5024-792f-4f0c-9b52-40f38ace5412",
+      "name": "Insert rows in a table",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.vendor_email }}",
+        "subject": "=URGENT: Inventory Request - {{ $json.equipment_requested }}",
+        "message": "=<p>Hi {{ $json.vendor_name }},</p>\n<p>We have an urgent requirement for a <b>{{ $json.equipment_requested }}</b> for our customer {{ $json.customer_name }}.</p>\n\n<p><b>Delivery/Service Details:</b></p>\n<ul>\n    <li>City: {{ $json.city }}</li>\n</ul>\n\n<p><b>Rental Period:</b></p>\n<ul>\n    <li>Start Date:{{ new Date($('Webhook').item.json.body.start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }} at {{ new Date($('Webhook').item.json.body.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }} </li>\n    <li>End Date: {{ new Date($('Webhook').item.json.body.expected_return_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }} at {{ new Date($('Webhook').item.json.body.expected_return_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }}</li>\n</ul>\n\n<p>Could you please confirm if this is available for rental? Also, please provide your best daily rate.</p>\n<p>Thanks,<br>US Construction Rentals</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [1168, 112],
+      "id": "d141c15d-b00a-419e-9559-54939ae83ab4",
+      "name": "Send a message2",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_OAUTH_CREDENTIAL_ID",
+          "name": "Gmail account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [736, 112],
+      "id": "49bb1d17-e088-4a43-93d4-f65cfc8012b4",
+      "name": "Loop Over Items",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [512, 112],
+      "id": "f1e1f5f6-e032-4cbf-b18a-939bfe063703",
+      "name": "Split Out",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body;\n\nconst required = [\n  'full_name', 'email', 'phone_number', 'company_name',\n  'address', 'city', 'state_region', 'postal_code',\n  'start_time', 'expected_return_time', 'model_name',\n  'equipment_id', 'daily_rate', 'total_price'\n];\n\nconst missing = required.filter(f => !body[f] || body[f] === '');\n\nif (missing.length > 0) {\n  return [{ json: { valid: false, missing_fields: missing } }];\n}\n\n// Total price recalculate\nconst start = new Date(body.start_time);\nconst end = new Date(body.expected_return_time);\nconst days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));\nconst total = parseFloat(body.daily_rate) * days;\n\nreturn [{ json: { \n  valid: true, \n  ...body,\n  total_price: total\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-848, 512],
+      "id": "571b04b4-adf0-4b22-afb8-47c9954e1f9e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1b6d6b27-dbc6-44f4-839d-8b1dedbaf0be",
+              "leftValue": "={{ $json.valid.toString() }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-640, 528],
+      "id": "8d52e638-5e7c-473f-9b6d-66dfc1f03b6f",
+      "name": "If2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": { "main": [ [ { "node": "Execute a SQL query", "type": "main", "index": 0 } ] ] },
+    "Execute a SQL query": { "main": [ [ { "node": "If", "type": "main", "index": 0 } ] ] },
+    "If": { "main": [ [ { "node": "Send a message", "type": "main", "index": 0 } ], [ { "node": "Respond to Webhook", "type": "main", "index": 0 } ] ] },
+    "Webhook1": { "main": [ [ { "node": "Code in JavaScript", "type": "main", "index": 0 } ] ] },
+    "Execute a SQL query1": { "main": [ [ { "node": "Execute a SQL query4", "type": "main", "index": 0 } ] ] },
+    "Execute a SQL query2": { "main": [ [ { "node": "Execute a SQL query3", "type": "main", "index": 0 } ] ] },
+    "Execute a SQL query3": { "main": [ [ { "node": "Create or update a contact", "type": "main", "index": 0 } ] ] },
+    "Execute a SQL query4": { "main": [ [ { "node": "If1", "type": "main", "index": 0 } ] ] },
+    "If1": { "main": [ [ { "node": "Execute a SQL query2", "type": "main", "index": 0 } ], [ { "node": "Respond to Webhook3", "type": "main", "index": 0 } ] ] },
+    "Create or update a contact": { "main": [ [ { "node": "Create a deal", "type": "main", "index": 0 } ] ] },
+    "Create a deal": { "main": [ [ { "node": "Send a message1", "type": "main", "index": 0 } ] ] },
+    "Send a message": { "main": [ [ { "node": "HTTP Request", "type": "main", "index": 0 } ] ] },
+    "Send a message1": { "main": [ [ { "node": "Respond to Webhook2", "type": "main", "index": 0 } ] ] },
+    "HTTP Request": { "main": [ [ { "node": "Split Out", "type": "main", "index": 0 } ] ] },
+    "Insert rows in a table": { "main": [ [ { "node": "Send a message2", "type": "main", "index": 0 } ] ] },
+    "Send a message2": { "main": [ [ { "node": "Respond to Webhook1", "type": "main", "index": 0 } ] ] },
+    "Loop Over Items": { "main": [ [ { "node": "Insert rows in a table", "type": "main", "index": 0 } ], [ { "node": "Loop Over Items", "type": "main", "index": 0 } ] ] },
+    "Split Out": { "main": [ [ { "node": "Loop Over Items", "type": "main", "index": 0 } ] ] },
+    "Code in JavaScript": { "main": [ [ { "node": "If2", "type": "main", "index": 0 } ] ] },
+    "If2": { "main": [ [ { "node": "Execute a SQL query1", "type": "main", "index": 0 } ] ] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "versionId": "2a121e39-22ef-4f04-b9d1-24f82baaaa5e",
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "YOUR_N8N_INSTANCE_ID" },
+  "id": "whSxDMWbI43MhXXF",
+  "tags": []
+}

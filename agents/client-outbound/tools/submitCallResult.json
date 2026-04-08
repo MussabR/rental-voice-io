@@ -1,0 +1,59 @@
+{
+  "id": "YOUR_TOOL_ID",
+  "createdAt": "2026-03-17T07:25:21.971Z",
+  "updatedAt": "2026-03-30T15:13:06.408Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool",
+    "description": "Use this tool at the end of the conversation to submit the final call result along with all booking details, client information, and equipment data to the dispatch system. This tool must be called once the client has either accepted or rejected the offer, and all required information has been collected."
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "YOUR_ORG_ID",
+  "name": "submitCallResult",
+  "url": "https://YOUR_N8N_DOMAIN/webhook/vapi-result",
+  "method": "POST",
+  "body": {
+    "type": "object",
+    "required": [
+      "call_result", "all_dispatch_ids", "customer_name", "customer_phone", 
+      "customer_email", "company_name", "address", "state_region", 
+      "postal_code", "city", "equipment_list", "client_final_rate", 
+      "vendor_name", "vendor_phone", "vendor_email", "vendor_base_rate", 
+      "markup_amount", "crm_vendor_id", "start_time", "expected_return_time"
+    ],
+    "properties": {
+      "city": { "description": "City where equipment is needed", "type": "string", "default": "" },
+      "address": { "description": "Street Address of the client", "type": "string", "default": "" },
+      "start_time": { "description": "Rental start date and time", "type": "string", "default": "" },
+      "call_result": { "description": "Client's response to the offer: accepted or rejected", "type": "string", "default": "" },
+      "postal_code": { "description": "Postal or zip code of the client", "type": "string", "default": "" },
+      "vendor_name": { "description": "Name of the vendor providing equipment", "type": "string", "default": "" },
+      "company_name": { "description": "Name of the client's company", "type": "string", "default": "" },
+      "state_region": { "description": "State or region of the client", "type": "string", "default": "" },
+      "vendor_email": { "description": "Email address of the vendor", "type": "string", "default": "" },
+      "vendor_phone": { "description": "Phone number of the vendor", "type": "string", "default": "" },
+      "crm_vendor_id": { "description": "Comma separated HubSpot vendor CRM IDs", "type": "string", "default": "" },
+      "customer_name": { "description": "Full name of the client", "type": "string", "default": "" },
+      "markup_amount": { "description": "Comma separated markup amounts for each equipment", "type": "string", "default": "" },
+      "customer_email": { "description": "Email address of the client", "type": "string", "default": "" },
+      "customer_phone": { "description": "Phone number of the client", "type": "string", "default": "" },
+      "equipment_list": { "description": "Comma separated list of equipment requested", "type": "string", "default": "" },
+      "all_dispatch_ids": { "description": "Comma separated dispatch IDs for this booking", "type": "string", "default": "" },
+      "vendor_base_rate": { "description": "Comma separated base rates charged by vendor", "type": "string", "default": "" },
+      "client_final_rate": { "description": "Comma separated final rates for each equipment", "type": "string", "default": "" },
+      "expected_return_time": { "description": "Rental end date and time", "type": "string", "default": "" }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  }
+}

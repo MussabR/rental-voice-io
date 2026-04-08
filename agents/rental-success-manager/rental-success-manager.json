@@ -1,0 +1,886 @@
+{
+  "name": "Rental Success Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2080,
+        144
+      ],
+      "id": "dcdff9ec-be8e-4490-88e7-3e9323ed273d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  r.rental_id,\n  r.client_id,\n  r.equipment_id,\n  r.expected_return_time,\n  r.status                 AS rental_status,\n  r.total_price,\n  r.return_call_attempts,\n  c.full_name              AS client_name,\n  c.phone_number           AS client_phone,\n  c.company_name,\n  COALESCE(e.model_name,        pd.equipment_requested) AS items_list,\n  COALESCE(e.daily_rate,        pd.client_final_rate)   AS daily_rate,\n  COALESCE(e.late_fee_per_hour, 0)                      AS late_fee,\n  CASE\n    WHEN r.equipment_id IS NOT NULL THEN 'OWNED'\n    ELSE 'PARTNER'\n  END AS source\nFROM rentals r\nJOIN clients c\n  ON r.client_id = c.client_id\nLEFT JOIN equipment_inventory e\n  ON r.equipment_id = e.equipment_id\nLEFT JOIN partners_dispatch pd\n  ON pd.rental_id = r.rental_id\n  AND r.equipment_id IS NULL\nWHERE r.status IN ('active', 'extended', 'overdue')\n  AND r.return_call_attempts < 3\n  AND (\n    r.expected_return_time <= NOW() + INTERVAL '3 hours'\n    OR r.expected_return_time < NOW()\n  )\nORDER BY r.return_call_attempts ASC, r.expected_return_time ASC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1680,
+        224
+      ],
+      "id": "3abfa65d-76ca-4025-bb6c-8b371f9371bf",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const grouped = {};\n\nfor (const item of $input.all()) {\n  const phone = item.json.client_phone;\n  const data  = item.json;\n\n  if (!grouped[phone]) {\n    grouped[phone] = {\n      client_name:   data.client_name,\n      client_phone:  phone,\n      company_name:  data.company_name,\n      rental_ids:    [],\n      equipment_ids: [],\n      items_list:    [],\n      sources:       [],\n      late_fees:     [],\n      daily_rates:   [],\n      return_times:  []\n    };\n  }\n\n  grouped[phone].rental_ids.push(data.rental_id);\n  grouped[phone].equipment_ids.push(data.equipment_id ?? 'null');\n  // null items_list ko handle karo\n  grouped[phone].items_list.push(data.items_list ?? 'Unknown Equipment');\n  grouped[phone].sources.push(data.source);\n  grouped[phone].late_fees.push(String(data.late_fee ?? '0'));\n  grouped[phone].daily_rates.push(String(data.daily_rate ?? '0'));\n  grouped[phone].return_times.push(data.expected_return_time);\n}\n\nconst result = [];\n\nfor (const key in grouped) {\n  const g = grouped[key];\n\n  const allOwned   = g.sources.every(s => s === 'OWNED');\n  const allPartner = g.sources.every(s => s === 'PARTNER');\n\n  // MIXED → skip, Ali jaisa case\n  if (!allOwned && !allPartner) continue;\n\n  result.push({ json: {\n    client_name:   g.client_name,\n    client_phone:  g.client_phone,\n    company_name:  g.company_name,\n    rental_ids:    g.rental_ids.join(','),\n    equipment_ids: g.equipment_ids.join(','),\n    items_list:    g.items_list.join(', '),\n    sources:       g.sources.join(','),\n    late_fees:     g.late_fees.join(','),\n    daily_rates:   g.daily_rates.join(','),\n    return_times:  g.return_times.join(','),\n    call_type:     allOwned ? 'OWNED' : 'PARTNER'\n  }});\n}\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1312,
+        160
+      ],
+      "id": "1026fe7f-4a04-4361-9058-ca75df16c83f",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1040,
+        240
+      ],
+      "id": "82d23de4-305e-462b-8a54-02282529c976",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a19c7591-610e-44af-ab12-9bae12d1fa51",
+              "leftValue": "={{ $json.call_type }}",
+              "rightValue": "OWNED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -656,
+        192
+      ],
+      "id": "f0c33026-690b-4102-a90c-821a60e49b77",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET\n  return_call_status    = 'calling',\n  return_call_attempts  = return_call_attempts + 1,\n  return_last_called_at = NOW()\nWHERE rental_id = ANY(\n  string_to_array('{{ $json.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -352,
+        96
+      ],
+      "id": "40617b72-4c13-4163-ada1-9bad75aff345",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET\n  return_call_status    = 'calling',\n  return_call_attempts  = return_call_attempts + 1,\n  return_last_called_at = NOW()\nWHERE rental_id = ANY(\n  string_to_array('{{ $json.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -352,
+        304
+      ],
+      "id": "8887a412-cd00-4181-acfe-0fe472001bea",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assistantId\": \"YOUR_VAPI_ASSISTANT_ID\",\n  \"phoneNumberId\": \"YOUR_VAPI_PHONE_NUMBER_ID\",\n  \"customer\": {\n    \"number\": \"{{ $('If').item.json.client_phone.startsWith('+') ? $('If').item.json.client_phone : '+' + $('If').item.json.client_phone }}\"\n  },\n  \"assistantOverrides\": {\n    \"variableValues\": {\n      \"client_name\": \"{{ $('If').item.json.client_name }}\",\n      \"company_name\": \"{{ $('If').item.json.company_name }}\",\n      \"items_list\": \"{{ $('If').item.json.items_list }}\",\n      \"return_times\": \"{{ $('If').item.json.return_times }}\",\n      \"late_fees\": \"{{ $('If').item.json.late_fees }}\",\n      \"daily_rates\": \"{{ $('If').item.json.daily_rates }}\",\n      \"rental_ids\": \"{{ $('If').item.json.rental_ids }}\",\n      \"equipment_ids\": \"{{ $('If').item.json.equipment_ids }}\",\n      \"call_type\": \"OWNED\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3605f6c0-a909-4d02-aaf2-1e273eea034a",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_VAPI_API_CREDENTIAL_ID",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assistantId\": \"YOUR_VAPI_ASSISTANT_ID\",\n  \"phoneNumberId\": \"YOUR_VAPI_PHONE_NUMBER_ID\",\n  \"customer\": {\n    \"number\": \"{{ $('If').item.json.client_phone.startsWith('+') ? $('If').item.json.client_phone : '+' + $('If').item.json.client_phone }}\"\n  },\n  \"assistantOverrides\": {\n    \"variableValues\": {\n      \"client_name\": \"{{ $('If').item.json.client_name }}\",\n      \"company_name\": \"{{ $('If').item.json.company_name }}\",\n      \"items_list\": \"{{ $('If').item.json.items_list }}\",\n      \"return_times\": \"{{ $('If').item.json.return_times }}\",\n      \"rental_ids\": \"{{ $('If').item.json.rental_ids }}\",\n      \"call_type\": \"PARTNER\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        400
+      ],
+      "id": "64307e94-c947-49c4-9a28-dfde35a3f689",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_VAPI_API_CREDENTIAL_ID",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rental-manager",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2304,
+        656
+      ],
+      "id": "aa54350e-689c-414c-bdaa-48eaf0749fbb",
+      "name": "Webhook",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "73e074b6-9ead-4093-a5b5-127e390aa94d",
+              "leftValue": "={{ $json.body.call_type }}",
+              "rightValue": "OWNED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2096,
+        656
+      ],
+      "id": "689a0f4f-fa39-4f34-b69f-33808d6a1eb7",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2a71f862-a81d-46a3-ab18-a9b47d2c857b",
+              "leftValue": "={{ $json.body.response }}",
+              "rightValue": "confirm",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1888,
+        560
+      ],
+      "id": "e0f22794-a591-4564-94cd-09a72576eb7a",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET\n  status                = 'closed',\n  actual_return_time    = NOW(),\n  return_call_status    = 'confirmed',\n  return_last_called_at = NOW()\nWHERE rental_id = ANY(\n  string_to_array('{{ $('If2').item.json.body.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1680,
+        416
+      ],
+      "id": "deedb117-f251-475e-8c70-4f97b2df9696",
+      "name": "Execute a SQL query3",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE equipment_inventory SET\n  status       = 'available',\n  last_updated = NOW()\nWHERE equipment_id = ANY(\n  string_to_array('{{ $('If2').item.json.body.equipment_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1296,
+        384
+      ],
+      "id": "2f8cae78-1bca-46c3-a24d-fe2ab5e5827d",
+      "name": "Execute a SQL query4",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=✅ RETURN CONFIRMED\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLIENT:      {{ $('If2').item.json.body.client_name }}\nCOMPANY:     {{ $('If2').item.json.body.company_name }}\nPHONE:       {{ $('If2').item.json.body.client_phone }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nEQUIPMENT:   {{ $('If2').item.json.body.items_list }}\nRETURN DATE: {{ new Date($('If2').item.json.body.return_times.split(',')[0]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ Rental CLOSED\n✅ Inventory marked AVAILABLE",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -880,
+        432
+      ],
+      "id": "cac5d92f-b9a6-4769-8ec8-dc67c5f386da",
+      "name": "Send a message",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a81f9b17-b6e5-4264-ab39-f3c263ac7be0",
+              "leftValue": "={{ $json.body.response }}",
+              "rightValue": "extend",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1680,
+        656
+      ],
+      "id": "65cbca4b-928e-433c-a36a-f8fd59f9cd42",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals\nSET\n  extended_return_time  = '{{ $json.new_return_time }}'::timestamp,\n  extended_total_price  = {{ $json.item_extra_amount }},\n  status                = 'extended',\n  extension_count       = COALESCE(extension_count, 0) + 1,\n  return_call_status    = 'extended',\n  return_last_called_at = NOW()\nWHERE rental_id = '{{ $json.current_rental_id }}'::uuid;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1088,
+        624
+      ],
+      "id": "aa2546c2-6c96-4bdb-96a1-4fb97c50cc62",
+      "name": "Execute a SQL query5",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=🔄 RENTAL EXTENDED (Summary)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLIENT:      {{ $node[\"Code in JavaScript1\"].json.client_name }}\nCOMPANY:     {{ $node[\"Code in JavaScript1\"].json.company_name }}\nPHONE:       {{ $node[\"Code in JavaScript1\"].json.client_phone }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nITEMS UPDATED:\n{{ $(\"Code in JavaScript1\").all().map(item => `• ${item.json.current_item_name}: $${item.json.item_extra_amount} (${item.json.extra_days} days)`).join('\\n') }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNEW RETURN:  {{ new Date($node[\"Code in JavaScript1\"].json.new_return_time).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📌 Equipment remains RENTED\n✅ All items updated in Database",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -560,
+        608
+      ],
+      "id": "650060d6-6823-474f-84cf-1d50b92d38ca",
+      "name": "Send a message1",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst rentalIds = body.rental_ids.split(',');\nconst dailyRates = body.daily_rates.split(',').map(r => parseFloat(r));\nconst itemsList = body.items_list.split(',');\nconst returnTimes = body.return_times.split(',');\n\nconst newReturn = new Date(body.new_return_time);\nconst results = [];\n\nfor (let i = 0; i < rentalIds.length; i++) {\n  const oldReturn = new Date(returnTimes[i]);\n  // Calculate Days for this specific item\n  const extraDays = Math.ceil((newReturn - oldReturn) / (1000 * 60 * 60 * 24));\n  const itemExtraAmount = (dailyRates[i] * extraDays).toFixed(2);\n\n  results.push({\n    json: {\n      ...body, // Original data rakho reference ke liye\n      current_rental_id: rentalIds[i].trim(),\n      current_item_name: itemsList[i].trim(),\n      current_daily_rate: dailyRates[i],\n      extra_days: extraDays,\n      item_extra_amount: itemExtraAmount\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        560
+      ],
+      "id": "eb3e3dc0-a09d-4a9b-ad8d-82445c0157d2",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET\n  return_call_status    = 'no_answer',\n  return_last_called_at = NOW()\nWHERE rental_id = ANY(\n  string_to_array('{{ $node[\"Webhook\"].json.body.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1376,
+        752
+      ],
+      "id": "9ff2f8bb-a67f-44e8-9626-0dad790c7cd1",
+      "name": "Execute a SQL query6",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=⚠️ NO ANSWER / NO RESPONSE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLIENT:      {{ $node[\"Webhook\"].json.body.client_name }}\nCOMPANY:     {{ $node[\"Webhook\"].json.body.company_name }}\nPHONE:       {{ $node[\"Webhook\"].json.body.client_phone }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nEQUIPMENT ATTEMPTED:\n• {{ $node[\"Webhook\"].json.body.items_list.split(',').join('\\n• ') }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📌 Status updated to 'no_answer'\n🕒 System will retry in the next batch.",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -1088,
+        784
+      ],
+      "id": "cc900f89-4458-45cb-9b2a-c91bb2660f6d",
+      "name": "Send a message2",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e180ce8e-1ad4-4b67-ba7b-d2704a59124e",
+              "leftValue": "={{ $json.body.response }}",
+              "rightValue": "confirm",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1728,
+        992
+      ],
+      "id": "c73f087b-ec87-4a21-9b12-0e31651e356d",
+      "name": "If4"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET \n  status = 'closed',\n  return_call_status = 'confirmed'\nWHERE rental_id = ANY(\n  string_to_array('{{ $node[\"Webhook\"].json.body.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1472,
+        912
+      ],
+      "id": "008c1921-5f8b-4a6a-bb24-b7e3087b5005",
+      "name": "Execute a SQL query7",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=🤝 PARTNER RENTAL - RETURN CONFIRMED\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLIENT:      {{ $node[\"Webhook\"].json.body.client_name }} \nCOMPANY:     {{ $node[\"Webhook\"].json.body.company_name }}\nPHONE:       {{ $node[\"Webhook\"].json.body.client_phone }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \nEQUIPMENT:    \n• {{ $node[\"Webhook\"].json.body.items_list.split(',').join('\\n• ') }} \n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \n✅ Status: CLOSED (Partner Item) \n📌 Note: Logistics team, please coordinate pickup with the Vendor.",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -1232,
+        928
+      ],
+      "id": "c82b8648-5c5a-4c3e-a847-d0d042d215dc",
+      "name": "Send a message3",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rentals SET \n  return_call_status = 'action_required'\nWHERE rental_id = ANY(\n  string_to_array('{{ $node[\"Webhook\"].json.body.rental_ids }}', ',')::uuid[]\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1472,
+        1120
+      ],
+      "id": "63439b23-5b5b-4fb9-9c47-5795c275314b",
+      "name": "Execute a SQL query8",
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "YOUR_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=🚨 ACTION REQUIRED - PARTNER RENTAL\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \nCLIENT:      {{ $node[\"Webhook\"].json.body.client_name }} \nPHONE:       {{ $node[\"Webhook\"].json.body.client_phone }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \nEQUIPMENT:    • {{ $node[\"Webhook\"].json.body.items_list.split(',').join('\\n• ') }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \n⚠️ Extension is NOT allowed for Partner items.  ⚠️ Client response: {{ $node[\"Webhook\"].json.body.response }} \n📌 Manual follow-up needed to secure equipment.",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -1056,
+        1120
+      ],
+      "id": "f32d18dc-d8fc-4517-b3ff-f06129a8e65c",
+      "name": "Send a message4",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query3": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query4": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query5": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query6": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If4": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query7",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query7": {
+      "main": [
+        [
+          {
+            "node": "Send a message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query8": {
+      "main": [
+        [
+          {
+            "node": "Send a message4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5041d986-972f-4da2-aaa2-d9e924e9a71e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "zLBVo6KfUuMhO7HR",
+  "tags": []
+}

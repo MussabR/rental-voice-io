@@ -1,0 +1,48 @@
+{
+  "id": "YOUR_TOOL_ID",
+  "createdAt": "2026-03-16T05:47:49.955Z",
+  "updatedAt": "2026-03-30T15:10:47.718Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool",
+    "description": "The name or category of the equipment the user is looking for (e.g., Mini Excavator or Scissor Lift."
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "YOUR_ORG_ID",
+  "name": "get_inventory_details",
+  "url": "https://YOUR_N8N_DOMAIN/webhook/vapi-test",
+  "method": "POST",
+  "body": {
+    "type": "object",
+    "required": [
+      "city", "email", "address", "full_name", "start_time", 
+      "postal_code", "company_name", "phone_number", "state_region", 
+      "equipment_requested", "expected_return_time"
+    ],
+    "properties": {
+      "city": { "description": "", "type": "string", "default": "" },
+      "email": { "description": "", "type": "string", "default": "" },
+      "address": { "description": "", "type": "string", "default": "" },
+      "full_name": { "description": "", "type": "string", "default": "" },
+      "start_time": { "description": "", "type": "string", "default": "" },
+      "postal_code": { "description": "", "type": "string", "default": "" },
+      "company_name": { "description": "", "type": "string", "default": "" },
+      "phone_number": { "description": "", "type": "string", "default": "" },
+      "state_region": { "description": "", "type": "string", "default": "" },
+      "equipment_requested": { "description": "", "type": "string", "default": "" },
+      "expected_return_time": { "description": "", "type": "string", "default": "" }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  }
+}

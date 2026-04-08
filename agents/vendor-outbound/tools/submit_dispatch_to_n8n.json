@@ -1,0 +1,52 @@
+{
+  "id": "YOUR_TOOL_ID",
+  "createdAt": "2026-03-16T05:56:15.963Z",
+  "updatedAt": "2026-03-30T15:11:27.089Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool",
+    "description": "Use this tool to send the equipment rental details back to the database. Mapping: If the vendor says yes, set dispatch_status to 'Available'. If no, set it to 'Unavailable'. Put the price they mentioned in vendor_base_rate.\r\n"
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "YOUR_ORG_ID",
+  "name": "submit_dispatch_to_n8n",
+  "url": "https://YOUR_N8N_DOMAIN/webhook/vapi-callback-vendor",
+  "method": "POST",
+  "body": {
+    "type": "object",
+    "required": [
+      "city", "end_date", "start_date", "vendor_name", "vendor_email", 
+      "vendor_phone", "customer_name", "customer_email", "customer_phone", 
+      "equipment_list", "dispatch_status", "all_dispatch_ids", "vendor_base_rate", 
+      "vendor_priority"
+    ],
+    "properties": {
+      "city": { "description": "", "type": "string", "default": "" },
+      "end_date": { "description": "", "type": "string", "default": "" },
+      "start_date": { "description": "", "type": "string", "default": "" },
+      "vendor_name": { "description": "", "type": "string", "default": "" },
+      "vendor_email": { "description": "", "type": "string", "default": "" },
+      "vendor_phone": { "description": "", "type": "string", "default": "" },
+      "customer_name": { "description": "", "type": "string", "default": "" },
+      "customer_email": { "description": "", "type": "string", "default": "" },
+      "customer_phone": { "description": "", "type": "string", "default": "" },
+      "equipment_list": { "description": "", "type": "string", "default": "" },
+      "dispatch_status": { "description": "", "type": "string", "default": "" },
+      "vendor_priority": { "description": "Priority of vendor in dispatch order", "type": "string", "default": "" },
+      "all_dispatch_ids": { "description": "", "type": "string", "default": "" },
+      "vendor_base_rate": { "description": "", "type": "string", "default": "" }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  }
+}
